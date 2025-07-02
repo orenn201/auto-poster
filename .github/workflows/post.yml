@@ -1,53 +1,28 @@
-import os
-import time
-import random
-import requests
-import schedule
-from requests.auth import HTTPBasicAuth
+name: Auto Post
 
-# Configuration
-WP_URL      = "https://whellthyvibe.com"
-WP_USER     = "autoai"
-WP_PASSWORD = "bhUj b0Og Yk5N jO9z 5l3B ix2N"
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
-API_BASE = f"{WP_URL.rstrip('/')}/wp-json/wp/v2"
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
 
-# Predefined topics list
-TOPICS = [
-    "Proper nutrition for athletes",
-    "Effective home workouts",
-    "Beginner fitness routines",
-    "Cardio training for endurance",
-    "Bodyweight exercises",
-    "Core workouts at home",
-    "Daily exercise schedule",
-    "Mental health through sport",
-    "Post-workout recovery strategies",
-    "Importance of sleep for athletes"
-]
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
 
-auth = HTTPBasicAuth(WP_USER, WP_PASSWORD)
+      - run: |
+          python -m pip install --upgrade pip
+          pip install openai requests schedule httpx
 
-
-def create_post(title: str):
-    payload = {"title": title, "status": "publish"}
-    try:
-        r = requests.post(f"{API_BASE}/posts", auth=auth, json=payload)
-        r.raise_for_status()
-        print("Posted (title only):", title)
-    except Exception as e:
-        print("Post creation failed:", e)
-
-
-def job():
-    topic = random.choice(TOPICS)
-    print("Generating title-only post for topic:", topic)
-    create_post(topic)
-
-# initial run and schedule
-if __name__ == "__main__":
-    job()
-    schedule.every().hour.do(job)
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+      - env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_PASSWORD: ${{ secrets.WP_PASSWORD }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python auto_poster.py
