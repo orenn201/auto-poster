@@ -31,6 +31,11 @@ jobs:
           echo "Installed packages:" && pip freeze
 
       - name: Run auto_poster script
+        env:
+          WP_URL: ${{ secrets.WP_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_PASSWORD: ${{ secrets.WP_PASSWORD }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python auto_poster.py 2>&1 | tee script.log
         continue-on-error: true
