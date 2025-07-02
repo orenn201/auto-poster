@@ -1,47 +1,135 @@
-name: Auto Post
+import os
+import time
+import json
+import random
+import requests
+import openai
+import schedule
+from requests.auth import HTTPBasicAuth
+from httpx import ConnectError, ReadTimeout, HTTPError as HTTPXError
 
-on:
-  schedule:
-    # Every hour on the hour
-    - cron: '0 * * * *'
-  workflow_dispatch:
+# Load configuration from environment
+WP_URL = os.getenv("WP_URL")
+WP_USER = os.getenv("WP_USER")
+WP_PASSWORD = os.getenv("WP_PASSWORD")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+API_BASE = f"{WP_URL.rstrip('/')}/wp-json/wp/v2"
+STATE_FILE = "used_topics.json"
 
-jobs:
-  post:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+# Initialize OpenAI and auth
+openai.api_key = OPENAI_API_KEY
+auth = HTTPBasicAuth(WP_USER, WP_PASSWORD)
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
+# Load or initialize used topics
+if os.path.exists(STATE_FILE):
+    used_topics = set(json.load(open(STATE_FILE)))
+else:
+    used_topics = set()
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install openai requests schedule httpx
+def save_used():
+    with open(STATE_FILE, "w") as f:
+        json.dump(list(used_topics), f)
 
-      - name: Debug environment
-        run: |
-          echo "Python version: $(python --version)"
-          echo "Working directory: $(pwd)"
-          echo "List directory contents:" && ls -R .
-          echo "Installed packages:" && pip freeze
+def suggest_topic() -> str:
+    for _ in range(5):
+        try:
+            resp = openai.ChatCompletion.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": "Suggest a unique blog post topic about fitness or healthy living."}],
+                max_tokens=20,
+                temperature=0.8
+            )
+            topic = resp.choices[0].message.content.strip()
+            if topic and topic not in used_topics:
+                used_topics.add(topic)
+                save_used()
+                return topic
+        except Exception:
+            time.sleep(2)
+    fallback = f"General fitness tip #{len(used_topics)+1}"
+    used_topics.add(fallback)
+    save_used()
+    return fallback
 
-      - name: Run auto_poster script
-        env:
-          WP_URL: ${{ secrets.WP_URL }}
-          WP_USER: ${{ secrets.WP_USER }}
-          WP_PASSWORD: ${{ secrets.WP_PASSWORD }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          python auto_poster.py 2>&1 | tee script.log
-        continue-on-error: true
+def generate_text(topic: str) -> str:
+    prompt = (
+        f"Write a detailed, 600–800 word blog post in English on: {topic}. "
+        "Include introduction, conclusion, nutrition insights, exercise tips, and health benefits."
+    )
+    try:
+        resp = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800,
+            temperature=0.7
+        )
+        return resp.choices[0].message.content
+    except Exception:
+        return "Content temporarily unavailable."
 
-      - name: Upload logs
-        uses: actions/upload-artifact@v4
-        with:
-          name: script-logs
-          path: script.log
+def fetch_image(topic: str) -> str:
+    try:
+        resp = openai.Images.create(
+            prompt=f"{topic}, healthy sports nutrition, professional photo",
+            n=1, size="1024x1024"
+        )
+        url = resp.data[0].url
+    except Exception:
+        url = "https://source.unsplash.com/1024x1024/?fitness,health"
+    filename = f"{int(time.time())}.jpg"
+    try:
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        with open(filename, "wb") as f:
+            f.write(r.content)
+        return filename
+    except Exception:
+        return None
+
+def upload_media(path: str) -> int:
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as img:
+            r = requests.post(
+                f"{API_BASE}/media",
+                auth=auth,
+                headers={"Content-Disposition": f'attachment; filename="{os.path.basename(path)}"'},
+                files={"file": img}
+            )
+        r.raise_for_status()
+        return r.json().get("id")
+    except Exception:
+        return None
+
+def create_post(title: str, body: str, media_id: int):
+    payload = {"title": title, "content": body, "status": "publish"}
+    if media_id:
+        payload["featured_media"] = media_id
+    try:
+        r = requests.post(f"{API_BASE}/posts", auth=auth, json=payload)
+        r.raise_for_status()
+    except Exception as e:
+        print("Post creation error:", e)
+
+def job():
+    topic = suggest_topic()
+    print("Topic:", topic)
+    text = generate_text(topic)
+    img = fetch_image(topic)
+    media_id = upload_media(img) if img else None
+    if media_id:
+        content = f'<img src="{requests.post(f"{API_BASE}/media/{media_id}", auth=auth).json().get("source_url")}"/>' + "\n\n" + text
+    else:
+        content = text
+    create_post(topic, content, media_id)
+    print("Posted:", topic)
+
+# Schedule job every hour
+schedule.every().hour.do(job)
+
+if __name__ == "__main__":
+    job()
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
