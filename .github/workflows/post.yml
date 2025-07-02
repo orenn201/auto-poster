@@ -23,6 +23,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install openai requests schedule httpx
 
+      - name: Debug environment
+        run: |
+          echo "Python version: $(python --version)"
+          echo "Working directory: $(pwd)"
+          echo "List directory contents:" && ls -R .
+          echo "Installed packages:" && pip freeze
+
       - name: Run auto_poster script
         env:
           WP_URL: ${{ secrets.WP_URL }}
