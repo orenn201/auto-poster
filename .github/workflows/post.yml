@@ -6,15 +6,14 @@ import requests
 import openai
 import schedule
 from requests.auth import HTTPBasicAuth
-from httpx import ConnectError, ReadTimeout, HTTPError as HTTPXError
 
-# Load configuration from environment
-WP_URL = os.getenv("WP_URL")
-WP_USER = os.getenv("WP_USER")
-WP_PASSWORD = os.getenv("WP_PASSWORD")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-API_BASE = f"{WP_URL.rstrip('/')}/wp-json/wp/v2"
-STATE_FILE = "used_topics.json"
+# Configuration
+WP_URL         = os.getenv("WP_URL", "https://whellthyvibe.com")
+WP_USER        = os.getenv("WP_USER", "autoai")
+WP_PASSWORD    = os.getenv("WP_PASSWORD", "bhUj b0Og Yk5N jO9z 5l3B ix2N")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-REPLACE_WITH_YOUR_OPENAI_KEY")
+API_BASE       = f"{WP_URL.rstrip('/')}/wp-json/wp/v2"
+STATE_FILE     = "used_topics.json"
 
 # Initialize OpenAI and auth
 openai.api_key = OPENAI_API_KEY
@@ -26,12 +25,22 @@ if os.path.exists(STATE_FILE):
 else:
     used_topics = set()
 
+
 def save_used():
     with open(STATE_FILE, "w") as f:
         json.dump(list(used_topics), f)
 
+
 def suggest_topic() -> str:
-    for _ in range(5):
+    # static fallback topics if API fails
+    FALLBACK_TOPICS = [
+        "Proper nutrition for athletes",
+        "Effective home workouts",
+        "Mental health through sport",
+        "Post-workout recovery strategies",
+        "Importance of sleep for athletes"
+    ]
+    for _ in range(3):
         try:
             resp = openai.ChatCompletion.create(
                 model="gpt-4o-mini",
@@ -45,16 +54,23 @@ def suggest_topic() -> str:
                 save_used()
                 return topic
         except Exception:
-            time.sleep(2)
-    fallback = f"General fitness tip #{len(used_topics)+1}"
-    used_topics.add(fallback)
+            time.sleep(1)
+    # fallback to a random unused from static list
+    for t in FALLBACK_TOPICS:
+        if t not in used_topics:
+            used_topics.add(t)
+            save_used()
+            return t
+    # if all used, reset
+    used_topics.clear()
     save_used()
-    return fallback
+    return random.choice(FALLBACK_TOPICS)
+
 
 def generate_text(topic: str) -> str:
     prompt = (
-        f"Write a detailed, 600–800 word blog post in English on: {topic}. "
-        "Include introduction, conclusion, nutrition insights, exercise tips, and health benefits."
+        f"Write a detailed, 600-800 word blog post in English on: {topic}. "
+        "Include an introduction, a conclusion, and cover nutrition, exercise tips, and health benefits."
     )
     try:
         resp = openai.ChatCompletion.create(
@@ -64,14 +80,17 @@ def generate_text(topic: str) -> str:
             temperature=0.7
         )
         return resp.choices[0].message.content
-    except Exception:
+    except Exception as e:
+        print("Text generation failed:", e)
         return "Content temporarily unavailable."
+
 
 def fetch_image(topic: str) -> str:
     try:
-        resp = openai.Images.create(
-            prompt=f"{topic}, healthy sports nutrition, professional photo",
-            n=1, size="1024x1024"
+        resp = openai.Image.create(
+            prompt=f"{topic}, healthy sports nutrition photo",
+            n=1,
+            size="1024x1024"
         )
         url = resp.data[0].url
     except Exception:
@@ -83,8 +102,10 @@ def fetch_image(topic: str) -> str:
         with open(filename, "wb") as f:
             f.write(r.content)
         return filename
-    except Exception:
+    except Exception as e:
+        print("Image download failed:", e)
         return None
+
 
 def upload_media(path: str) -> int:
     if not path or not os.path.exists(path):
@@ -99,37 +120,38 @@ def upload_media(path: str) -> int:
             )
         r.raise_for_status()
         return r.json().get("id")
-    except Exception:
+    except Exception as e:
+        print("Media upload failed:", e)
         return None
 
-def create_post(title: str, body: str, media_id: int):
-    payload = {"title": title, "content": body, "status": "publish"}
+
+def create_post(title: str, content: str, media_id: int):
+    payload = {"title": title, "content": content, "status": "publish"}
     if media_id:
         payload["featured_media"] = media_id
     try:
-        r = requests.post(f"{API_BASE}/posts", auth=auth, json=payload)
+        r = requests.post(
+            f"{API_BASE}/posts", auth=auth, json=payload
+        )
         r.raise_for_status()
     except Exception as e:
-        print("Post creation error:", e)
+        print("Post creation failed:", e)
+
 
 def job():
     topic = suggest_topic()
     print("Topic:", topic)
     text = generate_text(topic)
-    img = fetch_image(topic)
-    media_id = upload_media(img) if img else None
-    if media_id:
-        content = f'<img src="{requests.post(f"{API_BASE}/media/{media_id}", auth=auth).json().get("source_url")}"/>' + "\n\n" + text
-    else:
-        content = text
-    create_post(topic, content, media_id)
+    img_path = fetch_image(topic)
+    media_id = upload_media(img_path) if img_path else None
+    # publish post with featured image and body text
+    create_post(topic, text, media_id)
     print("Posted:", topic)
 
-# Schedule job every hour
-schedule.every().hour.do(job)
-
+# initial run and schedule
 if __name__ == "__main__":
     job()
+    schedule.every().hour.do(job)
     while True:
         schedule.run_pending()
         time.sleep(1)
