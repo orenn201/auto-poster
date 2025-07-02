@@ -24,7 +24,6 @@ jobs:
           pip install openai requests schedule httpx
 
       - name: Run auto_poster script
-        continue-on-error: true  # don't fail workflow on script error
         env:
           WP_URL: ${{ secrets.WP_URL }}
           WP_USER: ${{ secrets.WP_USER }}
