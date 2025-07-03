@@ -7,12 +7,11 @@ import openai
 from requests.auth import HTTPBasicAuth
 
 # ————— Configuration —————
-# WordPress credentials
 WP_URL      = "https://whellthyvibe.com"
 WP_USER     = "autoai"
 WP_PASSWORD = "bhUj b0Og Yk5N jO9z 5l3B ix2N"
 
-# Load OpenAI key from environment (must match your GitHub secret OPENAI_API_KEY)
+# Load your OpenAI key from the environment (must match your GitHub secret OPENAI_API_KEY)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY is not set in environment")
@@ -39,7 +38,7 @@ def generate_text(topic: str) -> str:
         f"Write a detailed, 600–800 word blog post in English about: {topic}. "
         "Include an introduction, conclusion, nutrition tips, exercise advice, and health benefits."
     )
-    # using openai==0.28.x
+    # old interface (requires openai==0.28)
     resp = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
@@ -57,11 +56,9 @@ def generate_image(topic: str) -> str:
         )
         url = img.data[0].url
     except Exception:
-        # fallback to Unsplash
         url = "https://source.unsplash.com/1024x1024/?fitness,health"
     filename = f"{int(time.time())}.jpg"
-    r = requests.get(url, timeout=15)
-    r.raise_for_status()
+    r = requests.get(url, timeout=15); r.raise_for_status()
     with open(filename, "wb") as f:
         f.write(r.content)
     return filename
@@ -80,11 +77,7 @@ def upload_media(path: str) -> int:
     return r.json().get("id")
 
 def create_post(title: str, content: str, media_id: int = None):
-    data = {
-        "title": title,
-        "content": content,
-        "status": "publish"
-    }
+    data = {"title": title, "content": content, "status": "publish"}
     if media_id:
         data["featured_media"] = media_id
     r = requests.post(f"{API_BASE}/posts", auth=auth, json=data)
@@ -92,12 +85,12 @@ def create_post(title: str, content: str, media_id: int = None):
     print(f"Posted: {title}")
 
 def job():
-    topic   = random.choice(TOPICS)
+    topic = random.choice(TOPICS)
     print(f"Generating post on: {topic}")
-    text    = generate_text(topic)
+    text     = generate_text(topic)
     img_path = generate_image(topic)
     media_id = upload_media(img_path)
-    img_tag = (
+    img_tag  = (
         f'<img src="{WP_URL}/wp-content/uploads/{os.path.basename(img_path)}" '
         f'alt="{topic}" />\n\n'
         if media_id else ""
@@ -105,8 +98,12 @@ def job():
     create_post(topic, img_tag + text, media_id)
 
 if __name__ == "__main__":
-    job()                           # run one post immediately
-    schedule.every().hour.do(job)   # schedule every hour
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+    # Publish one post immediately:
+    job()
+
+    # If running locally (not in GitHub Actions), keep schedule loop:
+    if not os.getenv("CI"):
+        schedule.every().hour.do(job)
+        while True:
+            schedule.run_pending()
+            time.sleep(1)
