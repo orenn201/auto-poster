@@ -2,12 +2,14 @@ name: Auto Post
 
 on:
   schedule:
+    # כל שעה בדקה 0
     - cron: '0 * * * *'
-  workflow_dispatch:
+  workflow_dispatch:    # הרצה ידנית
 
 jobs:
   post:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -20,8 +22,15 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # כאן אנחנו מפינים לגרסה ישנה שתומכת בקריאות שלך
-          pip install openai==0.28 requests schedule httpx
+          # כאן אנחנו פינים לגרסה ישנה שתומכת ב־ChatCompletion.create
+          pip install openai==0.28.0 requests schedule httpx
+
+      - name: Debug OPENAI_API_KEY
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          echo ">>> OPENAI_API_KEY length: ${#OPENAI_API_KEY}"
+          # אם זה 0 — ה-Secret לא נטען כראוי
 
       - name: Run auto_poster
         env:
