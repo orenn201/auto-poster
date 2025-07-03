@@ -11,10 +11,10 @@ WP_URL      = "https://whellthyvibe.com"
 WP_USER     = "autoai"
 WP_PASSWORD = "bhUj b0Og Yk5N jO9z 5l3B ix2N"
 
-# Load your OpenAI key from the environment
+# Load API key from environment (must match your GitHub secret OPENAI_API_KEY)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY is not set in the environment")
+    raise RuntimeError("OPENAI_API_KEY is not set in environment")
 openai.api_key = OPENAI_API_KEY
 
 API_BASE = f"{WP_URL.rstrip('/')}/wp-json/wp/v2"
@@ -38,6 +38,7 @@ def generate_text(topic: str) -> str:
         f"Write a detailed, 600–800 word blog post in English about: {topic}. "
         "Include an introduction, conclusion, nutrition tips, exercise advice, and health benefits."
     )
+    # old API interface supported by openai==0.28
     resp = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
@@ -97,8 +98,8 @@ def job():
     create_post(topic, img_tag + text, media_id)
 
 if __name__ == "__main__":
-    job()                          # Run one post immediately
-    schedule.every().hour.do(job)  # Then every hour
+    job()                            # run immediately
+    schedule.every().hour.do(job)    # then every hour
     while True:
         schedule.run_pending()
         time.sleep(1)
