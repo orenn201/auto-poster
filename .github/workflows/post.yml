@@ -19,11 +19,11 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install dependencies
+            - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # כאן אנחנו פינים לגרסה ישנה שתומכת ב־ChatCompletion.create
-          pip install openai==0.28.0 requests schedule httpx
+          # מגבילים לגרסה 0.28 שמכילה את openai.ChatCompletion.create
+          pip install openai==0.28.0 requests schedule httpx --force-reinstall
 
       - name: Debug OPENAI_API_KEY
         env:
