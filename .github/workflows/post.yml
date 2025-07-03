@@ -2,8 +2,8 @@ name: Auto Post
 
 on:
   schedule:
-    - cron: '0 * * * *'       # כל שעה בדקה 0
-  workflow_dispatch:         # מאפשר הרצה ידנית
+    - cron: '0 * * * *'      # כל שעה בדקה 0
+  workflow_dispatch:        # הרצה ידנית
 
 jobs:
   post:
@@ -28,7 +28,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           echo ">>> OPENAI_API_KEY length: ${#OPENAI_API_KEY}"
-          # אם אורך = 0, משמעות הדבר שה-secret לא נטען כראוי.
 
       - name: Run auto_poster
         env:
