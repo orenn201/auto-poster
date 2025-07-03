@@ -1,14 +1,3 @@
-name: Auto Post
-
-on:
-  schedule:
-    # every hour at minute 0
-    - cron:  '0 * * * *'
-  workflow_dispatch:
-
-jobs:
-  post:
-    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -25,9 +14,10 @@ jobs:
 
       - name: Run auto_poster
         env:
-          WP_URL: ${{ secrets.WP_URL }}
-          WP_USER: ${{ secrets.WP_USER }}
-          WP_PASSWORD: ${{ secrets.WP_PASSWORD }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          WP_URL:           ${{ secrets.WP_URL }}
+          WP_USER:          ${{ secrets.WP_USER }}
+          WP_PASSWORD:      ${{ secrets.WP_PASSWORD }}
+          OPENAI_API_KEY:   ${{ secrets.OPENAI_API_KEY }}
         run: |
+          echo "OPENAI_API_KEY length: ${#OPENAI_API_KEY}"
           python auto_poster.py
