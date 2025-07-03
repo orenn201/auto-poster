@@ -2,12 +2,18 @@ name: Auto Post
 
 on:
   schedule:
+<<<<<<< HEAD
     - cron: '0 * * * *'
   workflow_dispatch:
+=======
+    - cron: '0 * * * *'      # כל שעה בדקה 0
+  workflow_dispatch:        # הרצה ידנית
+>>>>>>> ffff4861c239d91c42d80df29a37315fb37f1db7
 
 jobs:
   post:
     runs-on: ubuntu-latest
+<<<<<<< HEAD
     steps:
       - uses: actions/checkout@v3
 
@@ -23,6 +29,34 @@ jobs:
           WP_URL: ${{ secrets.WP_URL }}
           WP_USER: ${{ secrets.WP_USER }}
           WP_PASSWORD: ${{ secrets.WP_PASSWORD }}
+=======
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openai requests schedule httpx
+
+      - name: Debug OPENAI_API_KEY
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          echo ">>> OPENAI_API_KEY length: ${#OPENAI_API_KEY}"
+
+      - name: Run auto_poster
+        env:
+          WP_URL:         ${{ secrets.WP_URL }}
+          WP_USER:        ${{ secrets.WP_USER }}
+          WP_PASSWORD:    ${{ secrets.WP_PASSWORD }}
+>>>>>>> ffff4861c239d91c42d80df29a37315fb37f1db7
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python auto_poster.py
