@@ -1,10 +1,11 @@
+# File: .github/workflows/post.yml
 name: Auto Post
 
 on:
   schedule:
     # כל שעה בדקה 0
     - cron: '0 * * * *'
-  workflow_dispatch:    # הרצה ידנית
+  workflow_dispatch:  # מאפשר הרצה ידנית
 
 jobs:
   post:
@@ -19,18 +20,11 @@ jobs:
         with:
           python-version: '3.x'
 
-            - name: Install dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # מגבילים לגרסה 0.28 שמכילה את openai.ChatCompletion.create
-          pip install openai==0.28.0 requests schedule httpx --force-reinstall
-
-      - name: Debug OPENAI_API_KEY
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          echo ">>> OPENAI_API_KEY length: ${#OPENAI_API_KEY}"
-          # אם זה 0 — ה-Secret לא נטען כראוי
+          # פין לגרסה 0.28 שתומכת ב־ChatCompletion.create
+          pip install openai==0.28.0 requests schedule httpx
 
       - name: Run auto_poster
         env:
