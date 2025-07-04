@@ -1,6 +1,5 @@
 import os
 import time
-import random
 import json
 import requests
 import openai
@@ -20,29 +19,6 @@ openai.api_key = OPENAI_API_KEY
 API_BASE = f"{WP_URL.rstrip('/')}/wp-json/wp/v2"
 auth     = HTTPBasicAuth(WP_USER, WP_PASSWORD)
 
-# ————— Initial Topics —————
-TOPICS = [
-    "Proper nutrition for athletes",
-    "Effective home workouts",
-    "Beginner fitness routines",
-    "Cardio training for endurance",
-    "Bodyweight exercises",
-    "Core workouts at home",
-    "Daily exercise schedule",
-    "Mental health through sport",
-    "Post-workout recovery strategies",
-    "Importance of sleep for athletes",
-    "Hydration strategies",
-    "Flexibility and stretching routines",
-    "HIIT vs. steady-state cardio",
-    "Strength training fundamentals",
-    "Mind-body connection in exercise",
-    "Fitness tech gadgets overview",
-    "Plant-based diets for athletes",
-    "Injury prevention tips",
-    "Outdoor vs. indoor workouts"
-]
-
 STATE_FILE = "used_topics.json"
 
 def load_state():
@@ -55,29 +31,26 @@ def save_state(used):
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(used, f, ensure_ascii=False, indent=2)
 
-def refresh_topics():
+def pick_topic():
+    """בכל ריצה שואל את ה־API לנושא ייחודי, שאינו ברשימת 'used'."""
+    used = load_state()
     prompt = (
-        "Generate 15 fresh, distinct blog post topics about fitness, health and sports. "
-        "Return only a JSON array of strings."
+        "Suggest a single, concise blog post topic about lifestyle, health or sports. "
+        "It must NOT be any of these previously used topics:\n"
+        + "\n".join(f"- {t}" for t in used)
+        + "\nRespond with the topic only."
     )
     resp = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[{"role":"user","content":prompt}],
         temperature=0.8,
-        max_tokens=200
+        max_tokens=20
     )
-    return json.loads(resp.choices[0].message.content)
-
-def pick_topic():
-    global TOPICS
-    used   = load_state()
-    unused = [t for t in TOPICS if t not in used]
-    if not unused:
-        # list exhausted → fetch new topics
-        TOPICS = refresh_topics()
-        used    = []
-        unused  = TOPICS.copy()
-    topic = random.choice(unused)
+    topic = resp.choices[0].message.content.strip().strip('"')
+    # אם החזרה לא תקינה או שכבר ב־used, אפשר לנסות שנית
+    if not topic or topic in used:
+        # fallback לרענון מלא אם נתקע
+        topic = f"Health & fitness insight #{len(used)+1}"
     used.append(topic)
     save_state(used)
     return topic
@@ -99,8 +72,7 @@ def generate_image(topic: str) -> str:
     try:
         img = openai.Image.create(
             prompt=f"{topic}, healthy sports photo, high resolution",
-            n=1,
-            size="1024x1024"
+            n=1, size="1024x1024"
         )
         url = img.data[0].url
     except Exception:
