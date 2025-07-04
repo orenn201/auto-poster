@@ -1,5 +1,6 @@
 import os
 import time
+import random
 import json
 import requests
 import openai
@@ -32,7 +33,6 @@ def save_state(used):
         json.dump(used, f, ensure_ascii=False, indent=2)
 
 def pick_topic():
-    """בכל ריצה שואל את ה־API לנושא ייחודי, שאינו ברשימת 'used'."""
     used = load_state()
     prompt = (
         "Suggest a single, concise blog post topic about lifestyle, health or sports. "
@@ -47,9 +47,7 @@ def pick_topic():
         max_tokens=20
     )
     topic = resp.choices[0].message.content.strip().strip('"')
-    # אם החזרה לא תקינה או שכבר ב־used, אפשר לנסות שנית
     if not topic or topic in used:
-        # fallback לרענון מלא אם נתקע
         topic = f"Health & fitness insight #{len(used)+1}"
     used.append(topic)
     save_state(used)
@@ -62,7 +60,7 @@ def generate_text(topic: str) -> str:
     )
     resp = openai.ChatCompletion.create(
         model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role":"user","content":prompt}],
         temperature=0.7,
         max_tokens=800
     )
@@ -72,20 +70,21 @@ def generate_image(topic: str) -> str:
     try:
         img = openai.Image.create(
             prompt=f"{topic}, healthy sports photo, high resolution",
-            n=1, size="1024x1024"
+            n=1,
+            size="1024x1024"
         )
         url = img.data[0].url
     except Exception:
         url = "https://source.unsplash.com/1024x1024/?fitness,health"
-    fn = f"{int(time.time())}.jpg"
+    filename = f"{int(time.time())}.jpg"
     r = requests.get(url, timeout=15); r.raise_for_status()
-    with open(fn, "wb") as f:
+    with open(filename, "wb") as f:
         f.write(r.content)
-    return fn
+    return filename
 
-def upload_media(path: str) -> int:
+def upload_media(path: str):
     if not path or not os.path.exists(path):
-        return None
+        return None, None
     with open(path, "rb") as img_fd:
         r = requests.post(
             f"{API_BASE}/media",
@@ -94,7 +93,8 @@ def upload_media(path: str) -> int:
             files={"file": img_fd}
         )
     r.raise_for_status()
-    return r.json().get("id")
+    data = r.json()
+    return data.get("id"), data.get("source_url")
 
 def create_post(title: str, content: str, media_id: int=None):
     data = {"title": title, "content": content, "status": "publish"}
@@ -105,15 +105,14 @@ def create_post(title: str, content: str, media_id: int=None):
     print(f"Posted: {title}")
 
 def job():
-    topic   = pick_topic()
+    topic    = pick_topic()
     print(f"Generating post on: {topic}")
-    text     = generate_text(topic)
-    img_path = generate_image(topic)
-    media_id = upload_media(img_path)
-    img_tag  = (
-        f'<img src="{WP_URL}/wp-content/uploads/{os.path.basename(img_path)}" '
-        f'alt="{topic}" />\n\n'
-        if media_id else ""
+    text      = generate_text(topic)
+    img_path  = generate_image(topic)
+    media_id, media_url = upload_media(img_path)
+    img_tag   = (
+        f'<img src="{media_url}" alt="{topic}" />\n\n'
+        if media_url else ""
     )
     create_post(topic, img_tag + text, media_id)
 
