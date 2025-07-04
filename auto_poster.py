@@ -11,6 +11,7 @@ WP_URL      = "https://whellthyvibe.com"
 WP_USER     = "autoai"
 WP_PASSWORD = "bhUj b0Og Yk5N jO9z 5l3B ix2N"
 
+# Load OpenAI key from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY is not set in environment")
@@ -19,7 +20,7 @@ openai.api_key = OPENAI_API_KEY
 API_BASE = f"{WP_URL.rstrip('/')}/wp-json/wp/v2"
 auth     = HTTPBasicAuth(WP_USER, WP_PASSWORD)
 
-# הרחבנו וניהול דינמי של נושאים
+# ————— Initial Topics —————
 TOPICS = [
     "Proper nutrition for athletes",
     "Effective home workouts",
@@ -68,16 +69,14 @@ def refresh_topics():
     return json.loads(resp.choices[0].message.content)
 
 def pick_topic():
+    global TOPICS
     used   = load_state()
     unused = [t for t in TOPICS if t not in used]
     if not unused:
-        # נוצרת רשימה חדשה
-        new = refresh_topics()
-        # עדכון TOPICS גלובלי
-        global TOPICS
-        TOPICS[:] = new
-        used   = []
-        unused = TOPICS.copy()
+        # list exhausted → fetch new topics
+        TOPICS = refresh_topics()
+        used    = []
+        unused  = TOPICS.copy()
     topic = random.choice(unused)
     used.append(topic)
     save_state(used)
@@ -90,7 +89,7 @@ def generate_text(topic: str) -> str:
     )
     resp = openai.ChatCompletion.create(
         model="gpt-4o-mini",
-        messages=[{"role":"user","content":prompt}],
+        messages=[{"role": "user", "content": prompt}],
         temperature=0.7,
         max_tokens=800
     )
@@ -100,7 +99,8 @@ def generate_image(topic: str) -> str:
     try:
         img = openai.Image.create(
             prompt=f"{topic}, healthy sports photo, high resolution",
-            n=1, size="1024x1024"
+            n=1,
+            size="1024x1024"
         )
         url = img.data[0].url
     except Exception:
@@ -114,12 +114,12 @@ def generate_image(topic: str) -> str:
 def upload_media(path: str) -> int:
     if not path or not os.path.exists(path):
         return None
-    with open(path, "rb") as fd:
+    with open(path, "rb") as img_fd:
         r = requests.post(
             f"{API_BASE}/media",
             auth=auth,
             headers={"Content-Disposition": f'attachment; filename="{os.path.basename(path)}"'},
-            files={"file": fd}
+            files={"file": img_fd}
         )
     r.raise_for_status()
     return r.json().get("id")
