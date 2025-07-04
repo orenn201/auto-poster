@@ -70,8 +70,7 @@ def generate_image(topic: str) -> str:
     try:
         img = openai.Image.create(
             prompt=f"{topic}, healthy sports photo, high resolution",
-            n=1,
-            size="1024x1024"
+            n=1, size="1024x1024"
         )
         url = img.data[0].url
     except Exception:
@@ -82,9 +81,10 @@ def generate_image(topic: str) -> str:
         f.write(r.content)
     return filename
 
-def upload_media(path: str):
+def upload_media(path: str) -> str:
+    """Uploads media and returns the full-size URL only."""
     if not path or not os.path.exists(path):
-        return None, None
+        return None
     with open(path, "rb") as img_fd:
         r = requests.post(
             f"{API_BASE}/media",
@@ -94,27 +94,30 @@ def upload_media(path: str):
         )
     r.raise_for_status()
     data = r.json()
-    return data.get("id"), data.get("source_url")
+    return data.get("source_url")
 
-def create_post(title: str, content: str, media_id: int=None):
-    data = {"title": title, "content": content, "status": "publish"}
-    if media_id:
-        data["featured_media"] = media_id
+def create_post(title: str, content: str):
+    data = {
+        "title": title,
+        "content": content,
+        "status": "publish"
+    }
     r = requests.post(f"{API_BASE}/posts", auth=auth, json=data)
     r.raise_for_status()
     print(f"Posted: {title}")
 
 def job():
-    topic    = pick_topic()
+    topic     = pick_topic()
     print(f"Generating post on: {topic}")
     text      = generate_text(topic)
     img_path  = generate_image(topic)
-    media_id, media_url = upload_media(img_path)
+    media_url = upload_media(img_path)
     img_tag   = (
         f'<img src="{media_url}" alt="{topic}" />\n\n'
         if media_url else ""
     )
-    create_post(topic, img_tag + text, media_id)
+    # רק תמונה בתוך התוכן, בלי featured_media
+    create_post(topic, img_tag + text)
 
 if __name__ == "__main__":
     job()
