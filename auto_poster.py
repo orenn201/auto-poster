@@ -4,6 +4,7 @@ import random
 import json
 import requests
 import openai
+from PIL import Image, ImageFilter
 from requests.auth import HTTPBasicAuth
 
 # ————— Configuration —————
@@ -11,6 +12,7 @@ WP_URL      = "https://whellthyvibe.com"
 WP_USER     = "autoai"
 WP_PASSWORD = "bhUj b0Og Yk5N jO9z 5l3B ix2N"
 
+# Load OpenAI key from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY is not set in environment")
@@ -18,6 +20,7 @@ openai.api_key = OPENAI_API_KEY
 
 API_BASE = f"{WP_URL.rstrip('/')}/wp-json/wp/v2"
 auth     = HTTPBasicAuth(WP_USER, WP_PASSWORD)
+
 STATE_FILE = "used_topics.json"
 
 def load_state():
@@ -52,7 +55,6 @@ def pick_topic():
     return topic
 
 def generate_meta_description(topic: str) -> str:
-    """משגר ל־GPT בקשה לתמצת ל־140–160 תווים"""
     prompt = (
         f"Write a concise 140–160 character meta description in English "
         f"for a blog post about: {topic}."
@@ -78,11 +80,21 @@ def generate_text(topic: str) -> str:
     )
     return resp.choices[0].message.content.strip()
 
+def sharpen_image(path: str) -> str:
+    img = Image.open(path)
+    img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
+    img.save(path)
+    return path
+
 def generate_image(topic: str) -> str:
     try:
         img = openai.Image.create(
-            prompt=f"{topic}, healthy sports photo, high resolution",
-            n=1, size="1024x1024"
+            prompt=(
+                f"{topic}, healthy sports photo, high resolution, "
+                "photorealistic, sharp focus, ultra-detailed, no text or letters"
+            ),
+            n=1,
+            size="1024x1024"
         )
         url = img.data[0].url
     except Exception:
@@ -91,7 +103,7 @@ def generate_image(topic: str) -> str:
     r = requests.get(url, timeout=15); r.raise_for_status()
     with open(filename, "wb") as f:
         f.write(r.content)
-    return filename
+    return sharpen_image(filename)
 
 def upload_media(path: str):
     if not path or not os.path.exists(path):
@@ -104,14 +116,19 @@ def upload_media(path: str):
             files={"file": img_fd}
         )
     r.raise_for_status()
-    return r.json().get("id")
+    data = r.json()
+    return data.get("id")
 
-def create_post(title: str, content: str, excerpt: str, featured_media_id: int=None):
+def create_post(title: str, content: str, excerpt: str, focus_kw: str, featured_media_id: int=None):
     payload = {
         "title": title,
         "content": content,
-        "excerpt": excerpt,       # פה אנחנו שולחים את ה-meta description
-        "status": "publish"
+        "excerpt": excerpt,
+        "status": "publish",
+        "meta": {
+            "_yoast_wpseo_metadesc": excerpt,
+            "_yoast_wpseo_focuskw": focus_kw,
+        }
     }
     if featured_media_id:
         payload["featured_media"] = featured_media_id
@@ -122,18 +139,15 @@ def create_post(title: str, content: str, excerpt: str, featured_media_id: int=N
 def job():
     topic     = pick_topic()
     print(f"Generating post on: {topic}")
-    # 1. meta description
     meta_desc = generate_meta_description(topic)
-    # 2. main text
     text      = generate_text(topic)
-    # 3. image
     img_path  = generate_image(topic)
     media_id  = upload_media(img_path)
-    # 4. create post with excerpt
     create_post(
         title=topic,
         content=text,
         excerpt=meta_desc,
+        focus_kw=topic,
         featured_media_id=media_id
     )
 
