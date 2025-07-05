@@ -66,7 +66,8 @@ def generate_text(topic: str) -> str:
     )
     return resp.choices[0].message.content.strip()
 
-def generate_image(topic: str) -> str:
+def generate_image(topic: str) -> (int, str):
+    # 1) יצירת/הורדת התמונה
     try:
         img = openai.Image.create(
             prompt=f"{topic}, healthy sports photo, high resolution",
@@ -75,49 +76,40 @@ def generate_image(topic: str) -> str:
         url = img.data[0].url
     except Exception:
         url = "https://source.unsplash.com/1024x1024/?fitness,health"
-    filename = f"{int(time.time())}.jpg"
+    local_fn = f"{int(time.time())}.jpg"
     r = requests.get(url, timeout=15); r.raise_for_status()
-    with open(filename, "wb") as f:
+    with open(local_fn, "wb") as f:
         f.write(r.content)
-    return filename
-
-def upload_media(path: str) -> str:
-    """Uploads media and returns the full-size URL only."""
-    if not path or not os.path.exists(path):
-        return None
-    with open(path, "rb") as img_fd:
-        r = requests.post(
+    # 2) העלאה לוורדפרס ושמירת ה־ID
+    with open(local_fn, "rb") as img_fd:
+        r2 = requests.post(
             f"{API_BASE}/media",
             auth=auth,
-            headers={"Content-Disposition": f'attachment; filename="{os.path.basename(path)}"'},
+            headers={"Content-Disposition": f'attachment; filename="{os.path.basename(local_fn)}"'},
             files={"file": img_fd}
         )
-    r.raise_for_status()
-    data = r.json()
-    return data.get("source_url")
+    r2.raise_for_status()
+    data = r2.json()
+    return data.get("id"), data.get("source_url")
 
-def create_post(title: str, content: str):
-    data = {
-        "title": title,
-        "content": content,
-        "status": "publish"
-    }
-    r = requests.post(f"{API_BASE}/posts", auth=auth, json=data)
+def create_post(title: str, content: str, featured_media_id: int=None):
+    payload = {"title": title, "content": content, "status": "publish"}
+    if featured_media_id:
+        payload["featured_media"] = featured_media_id
+    r = requests.post(f"{API_BASE}/posts", auth=auth, json=payload)
     r.raise_for_status()
     print(f"Posted: {title}")
 
 def job():
-    topic     = pick_topic()
+    topic   = pick_topic()
     print(f"Generating post on: {topic}")
-    text      = generate_text(topic)
-    img_path  = generate_image(topic)
-    media_url = upload_media(img_path)
-    img_tag   = (
-        f'<img src="{media_url}" alt="{topic}" />\n\n'
-        if media_url else ""
-    )
-    # רק תמונה בתוך התוכן, בלי featured_media
-    create_post(topic, img_tag + text)
+    text    = generate_text(topic)
+    media_id, media_url = generate_image(topic)
+
+    # לא שמים את התמונה לגוף התוכן – היא תוצג אוטומטית כ־Featured Image
+    full_content = text
+
+    create_post(topic, full_content, featured_media_id=media_id)
 
 if __name__ == "__main__":
     job()
