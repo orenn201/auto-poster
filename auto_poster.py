@@ -4,7 +4,7 @@ import random
 import json
 import requests
 import openai
-from PIL import Image, ImageFilter
+from PIL import Image
 from requests.auth import HTTPBasicAuth
 
 # ————— Configuration —————
@@ -80,30 +80,39 @@ def generate_text(topic: str) -> str:
     )
     return resp.choices[0].message.content.strip()
 
-def sharpen_image(path: str) -> str:
-    img = Image.open(path)
-    img = img.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
-    img.save(path)
-    return path
-
 def generate_image(topic: str) -> str:
+    # ניסיון ראשון: DALL·E עם הוראות חדות וללא טקסט
     try:
+        prompt = (
+            f"{topic}, photorealistic portrait of a person exercising, "
+            "ultra-detailed, sharp focus, no text, no letters, no watermark"
+        )
         img = openai.Image.create(
-            prompt=(
-                f"{topic}, healthy sports photo, high resolution, "
-                "photorealistic, sharp focus, ultra-detailed, no text or letters"
-            ),
+            prompt=prompt,
             n=1,
             size="1024x1024"
         )
         url = img.data[0].url
     except Exception:
-        url = "https://source.unsplash.com/1024x1024/?fitness,health"
+        # פסקאופ גיבוי: תמונת סטוק מאנשאלש
+        keywords = topic.replace(" ", ",")
+        url = f"https://source.unsplash.com/1024x1024/?{keywords},fitness,portrait"
+
     filename = f"{int(time.time())}.jpg"
     r = requests.get(url, timeout=15); r.raise_for_status()
     with open(filename, "wb") as f:
         f.write(r.content)
-    return sharpen_image(filename)
+
+    # שמירה על יחס גובה-רוחב והדגשת חדות
+    im = Image.open(filename)
+    im.thumbnail((1024, 1024), Image.LANCZOS)
+    new_im = Image.new("RGB", (1024, 1024), (255,255,255))
+    x = (1024 - im.width) // 2
+    y = (1024 - im.height) // 2
+    new_im.paste(im, (x, y))
+    new_im.save(filename)
+
+    return filename
 
 def upload_media(path: str):
     if not path or not os.path.exists(path):
@@ -116,8 +125,7 @@ def upload_media(path: str):
             files={"file": img_fd}
         )
     r.raise_for_status()
-    data = r.json()
-    return data.get("id")
+    return r.json().get("id")
 
 def create_post(title: str, content: str, excerpt: str, focus_kw: str, featured_media_id: int=None):
     payload = {
