@@ -7,9 +7,9 @@ import openai
 from PIL import Image
 
 # ————— Configuration —————
-WP_URL        = "https://whellthyvibe.com"
-WP_USER       = "autoai"
-WP_PASS       = "Oren_ai12345"  # הסיסמה הרגילה שלך
+WP_URL         = "https://whellthyvibe.com"
+WP_USER        = "autoai"
+WP_PASS        = "Oren_ai12345"  # הסיסמה הרגילה שלך
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY is not set")
@@ -81,8 +81,8 @@ def pick_topic() -> str:
     used = load_state()
     cat = random.choice(CATEGORIES)
     prompt = (
-        f"Within the category \"{cat}\", suggest a specific, deep-dive blog post topic. "
-        "Do NOT repeat already used topics:\n" +
+        f"Within the category \"{cat}\", suggest a very specific deep-dive blog post topic. "
+        "Do NOT repeat any of these used topics:\n" +
         "\n".join(f"- {t}" for t in used) +
         "\nRespond with the topic only."
     )
@@ -104,25 +104,35 @@ def generate_meta(topic: str) -> str:
     resp = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[{"role":"user","content":
-            f"Write a 140–160 character meta description for a post about: {topic}."}],
+            f"Write a 150-character meta description for a blog post about: {topic}."}],
         temperature=0.6,
         max_tokens=60
     )
     return resp.choices[0].message.content.strip().strip('"')
 
 def generate_text(topic: str) -> str:
+    prompt = (
+        f"Write a 650–800 word blog post about: {topic}. "
+        "Structure it with:\n"
+        "- An introduction paragraph\n"
+        "- H2 headings for each main section\n"
+        "- H3 subheadings where appropriate\n"
+        "- A clear “Nutrition Tips” section\n"
+        "- An “Exercise Advice” section\n"
+        "- A “Health Benefits” section\n"
+        "- End with a strong concluding paragraph that fully summarizes the key takeaways in a complete sentence.\n"
+        "Use complete sentences and make sure the post doesn’t end mid-sentence."
+    )
     resp = openai.ChatCompletion.create(
         model="gpt-4o-mini",
-        messages=[{"role":"user","content":
-            f"Write a detailed 600–800 word blog post about: {topic}. "
-            "Include an introduction, subheadings, nutrition tips, exercise advice and health benefits. "
-            "End with a strong concluding paragraph that fully summarizes the key takeaways in a complete sentence."}],
+        messages=[{"role":"user","content":prompt}],
         temperature=0.7,
-        max_tokens=800
+        max_tokens=900
     )
     text = resp.choices[0].message.content.strip()
-    if text.endswith((" to determine the", " to determine", " to")):
-        text += " best course of action for your health and performance."
+    # תיקון אוטומטי במשפט אחרון פתוח
+    if text.rstrip().endswith((" the", " and", " to")):
+        text += " all the steps needed to improve your performance and well-being."
     return text
 
 def generate_image(topic: str) -> str:
@@ -149,23 +159,19 @@ def generate_image(topic: str) -> str:
 def upload_media(path: str):
     if not os.path.exists(path):
         return None
-    try:
-        hdr = jwt_headers()
-        with open(path, "rb") as fd:
-            r = requests.post(
-                f"{API_BASE}/media",
-                headers={**hdr, "Content-Disposition": f'attachment; filename="{os.path.basename(path)}"'},
-                files={"file": fd},
-                timeout=30
-            )
-        if r.status_code == 401:
-            print("⚠️ media upload unauthorized, skipping image.")
-            return None
-        r.raise_for_status()
-        return r.json().get("id")
-    except Exception as e:
-        print(f"⚠️ upload_media failed: {e}")
+    hdr = jwt_headers()
+    with open(path, "rb") as fd:
+        r = requests.post(
+            f"{API_BASE}/media",
+            headers={**hdr, "Content-Disposition": f'attachment; filename="{os.path.basename(path)}"'},
+            files={"file": fd},
+            timeout=30
+        )
+    if r.status_code == 401:
+        print("⚠️ media upload unauthorized, skipping image.")
         return None
+    r.raise_for_status()
+    return r.json().get("id")
 
 def create_post(title: str, content: str, excerpt: str, focus_kw: str, media_id):
     hdr = {**jwt_headers(), "Content-Type":"application/json"}
