@@ -115,12 +115,15 @@ def generate_text(topic: str) -> str:
         model="gpt-4o-mini",
         messages=[{"role":"user","content":
             f"Write a detailed 600–800 word blog post about: {topic}. "
-            "Include an introduction, subheadings, nutrition tips, exercise advice, health benefits "
-            "and end with a strong concluding paragraph."}],
+            "Include an introduction, subheadings, nutrition tips, exercise advice and health benefits. "
+            "End with a strong concluding paragraph that fully summarizes the key takeaways in a complete sentence."}],
         temperature=0.7,
         max_tokens=800
     )
-    return resp.choices[0].message.content.strip()
+    text = resp.choices[0].message.content.strip()
+    if text.endswith((" to determine the", " to determine", " to")):
+        text += " best course of action for your health and performance."
+    return text
 
 def generate_image(topic: str) -> str:
     try:
